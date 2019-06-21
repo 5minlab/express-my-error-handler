@@ -26,6 +26,16 @@ function makeApp(prod: boolean) {
     throw new Error('sample error')
   })
 
+  app.get('/custom', (req, res) => {
+    const message = req.query.message
+    const name = req.query.name
+    const statusCode = parseInt(req.query.statusCode || '500', 10)
+    const e: any = new Error(message)
+    e.name = name
+    e.statusCode = statusCode
+    throw e
+  })
+
   app.get('/yup/', (req, res) => {
     const schema = yup.object().shape({
       str: yup.string().required()
@@ -43,29 +53,25 @@ const statusCode = faker.random.number({ min: 400, max: 499 })
 const code = faker.random.number({ min: 1, max: 100 })
 
 function assertRequest(opts: {
-  app: express.Application
-  url: string
+  test: request.Test
   statusCode: number
   expected: object
   done: jest.DoneCallback
 }) {
-  const { app, url, statusCode, expected, done } = opts
+  const { test, statusCode, expected, done } = opts
 
-  request(app)
-    .get(url)
-    .expect(statusCode)
-    .end((err, res) => {
-      if (err) {
-        throw err
-      }
+  test.expect(statusCode).end((err, res) => {
+    if (err) {
+      throw err
+    }
 
-      const body = res.body
-      expect(Array.isArray(body.stack)).toBe(true)
+    const body = res.body
+    expect(Array.isArray(body.stack)).toBe(true)
 
-      delete body.stack
-      expect(body).toEqual(expected)
-      done()
-    })
+    delete body.stack
+    expect(body).toEqual(expected)
+    done()
+  })
 }
 
 describe('development', () => {
@@ -79,7 +85,8 @@ describe('development', () => {
       message: 'sample http error',
       code: 0
     }
-    assertRequest({ app, url, statusCode, expected, done })
+    const test = request(app).get(url)
+    assertRequest({ test, statusCode, expected, done })
   })
 
   test('standard error', done => {
@@ -89,7 +96,8 @@ describe('development', () => {
       message: 'sample standard error',
       code
     }
-    assertRequest({ app, url, statusCode, expected, done })
+    const test = request(app).get(url)
+    assertRequest({ test, statusCode, expected, done })
   })
 
   test('yup - validation error', done => {
@@ -99,7 +107,8 @@ describe('development', () => {
       message: 'str is a required field',
       code: 0
     }
-    assertRequest({ app, url, statusCode: 400, expected, done })
+    const test = request(app).get(url)
+    assertRequest({ test, statusCode: 400, expected, done })
   })
 
   test('error', done => {
@@ -109,7 +118,19 @@ describe('development', () => {
       message: 'sample error',
       code: 0
     }
-    assertRequest({ app, url, statusCode: 500, expected, done })
+    const test = request(app).get(url)
+    assertRequest({ test, statusCode: 500, expected, done })
+  })
+
+  test('UnauthorizedError', done => {
+    const name = 'UnauthorizedError'
+    const message = 'No authorization token was found'
+    const statusCode = 401
+    const expected = { name, message, code: 0 }
+    const test = request(app)
+      .get('/custom')
+      .query({ name, message, statusCode })
+    assertRequest({ test, statusCode, expected, done })
   })
 })
 

@@ -1,31 +1,39 @@
 import express from 'express'
-import { ValidationError } from 'yup'
 
-type HttpError = Error & { statusCode: number }
-type StandardError = HttpError & { code: number }
+// express에서는 일반적으로 에러에 붙은 statusCode를 http status로 쓴다
+// https://gist.github.com/zcaceres/2854ef613751563a3b506fabce4501fd
+type StatusCodeError = Error & { statusCode: number }
 
-function isHttpError(x: any): x is HttpError {
+// https://github.com/auth0/express-jwt/blob/5766a24aeb7db15b8a183c59b4a9145552702f0e/lib/errors/UnauthorizedError.js
+// 일부 라이브러리는 status를 쓴다
+type StatusError = Error & { status: number }
+
+function isStatusCodeError(x: any): x is StatusCodeError {
   return typeof x.statusCode === 'number'
 }
-
-function isStandardError(x: any): x is StandardError {
-  return typeof x.statusCode === 'number' && typeof x.code === 'number'
-}
-
-function isValidationError(x: any): x is ValidationError {
-  return x.name === 'ValidationError'
+function isStatusError(x: any): x is StatusError {
+  return typeof x.status === 'number'
 }
 
 function getStatusCode(err: ErrorType) {
-  if (isHttpError(err)) {
+  // status가 정의된 경우
+  if (isStatusCodeError(err)) {
     return err.statusCode
-  } else if (isValidationError(err)) {
-    // Bad Request
-    return 400
-  } else {
-    // Internal Server Error
-    return 500
+  } else if (isStatusError(err)) {
+    return err.status
   }
+
+  // name based
+  if (err.name === 'ValidationError') {
+    return 400
+  }
+
+  // else...
+  return 500
+}
+
+function getCode(x: any): number {
+  return typeof x.code === 'number' ? x.code : 0
 }
 
 export interface ErrorResp {
@@ -35,7 +43,7 @@ export interface ErrorResp {
   stack: string[] | undefined
 }
 
-type ErrorType = Error | HttpError | ValidationError
+type ErrorType = Error | StatusCodeError | StatusError
 
 export const myErrorHandler = (production: boolean) => {
   return (
@@ -49,7 +57,7 @@ export const myErrorHandler = (production: boolean) => {
     const statusCode = getStatusCode(err)
     const stackStr = production ? undefined : err.stack
     const stack = stackStr ? stackStr.split('\n') : undefined
-    const code = isStandardError(err) ? err.code : 0
+    const code = getCode(err)
 
     const resp: ErrorResp = {
       name,
